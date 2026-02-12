@@ -8,7 +8,6 @@ on:
 jobs:
   release:
     strategy:
-      # 🛑 关键修改：防止一个系统失败导致另一个被取消
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
@@ -31,25 +30,34 @@ jobs:
         run: npm install
 
       # ==========================================
-      # 🍎 macOS 编译
+      # 🍎 macOS 编译 (重点修复部分)
       # ==========================================
       - name: Compile for macOS
         if: matrix.os == 'macos-latest'
         run: |
           cd whisper.cpp
 
-          echo "🛠️ 构建 macOS Intel (x86_64)..."
-          cmake -B build-x86 -DCMAKE_OSX_ARCHITECTURES=x86_64 -DGGML_NATIVE=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
+          echo "🛠️ 开始构建 macOS Intel (x86_64) 版本..."
+          # DGGML_NATIVE=OFF 禁止自动探测 CPU，防止 apple-m3 报错
+          cmake -B build-x86 \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DGGML_NATIVE=OFF \
+            -DWHISPER_BUILD_TESTS=OFF \
+            -DWHISPER_BUILD_EXAMPLES=ON
           cmake --build build-x86 --config Release -j 4
 
-          echo "🛠️ 构建 macOS Apple Silicon (arm64)..."
-          cmake -B build-arm -DCMAKE_OSX_ARCHITECTURES=arm64 -DGGML_NATIVE=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
+          echo "🛠️ 开始构建 macOS Apple Silicon (arm64) 版本..."
+          cmake -B build-arm \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DGGML_NATIVE=OFF \
+            -DWHISPER_BUILD_TESTS=OFF \
+            -DWHISPER_BUILD_EXAMPLES=ON
           cmake --build build-arm --config Release -j 4
 
-          echo "📦 整理文件..."
+          echo "📦 移动并重命名文件..."
           mkdir -p ../bin
 
-          # 智能查找：无论是 whisper-cli 还是 main 都能抓到
+          # 自动寻找文件名：新版叫 whisper-cli，旧版叫 main，找到哪个用哪个
           if [ -f "build-x86/bin/whisper-cli" ]; then
             cp build-x86/bin/whisper-cli ../bin/whisper-mac-x64
           else
@@ -63,25 +71,24 @@ jobs:
           fi
 
       # ==========================================
-      # 🪟 Windows 编译 (关键修复)
+      # 🪟 Windows 编译
       # ==========================================
       - name: Compile for Windows
         if: matrix.os == 'windows-latest'
         run: |
           cd whisper.cpp
+          # 同样禁止 Native 探测，保证兼容性
           cmake -B build -DGGML_NATIVE=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
           cmake --build build --config Release
-
-          # 🔧 修复点：使用 -Force 防止因文件夹已存在而报错
           New-Item -ItemType Directory -Force -Path ..\bin
 
-          echo "📦 正在查找生成的 exe 文件..."
+          # 兼容 Windows 的文件名查找
           if (Test-Path "build/bin/Release/whisper-cli.exe") {
             copy build/bin/Release/whisper-cli.exe ..\bin\whisper-win-x64.exe
           } elseif (Test-Path "build/bin/Release/main.exe") {
             copy build/bin/Release/main.exe ..\bin\whisper-win-x64.exe
           } else {
-             echo "Error: 找不到编译好的 exe 文件！"
+             echo "Error: Cannot find compiled exe!"
              exit 1
           }
 
