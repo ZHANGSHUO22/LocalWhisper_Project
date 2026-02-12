@@ -42,7 +42,8 @@
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "identity": null
+      "identity": null,
+	  "mergeASARs": false
     },
     "win": {
       "target": ["nsis", "portable"],
