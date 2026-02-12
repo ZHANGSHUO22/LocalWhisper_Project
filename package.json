@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Offline Speech to Text",
   "main": "app/main.js",
+  "author": "ZHANGSHUO22",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder"
@@ -30,11 +31,18 @@
       }
     ],
     "mac": {
-      "target": ["dmg"],
-      "arch": ["universal"],
-      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities",
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "identity": null
     },
     "win": {
       "target": ["nsis", "portable"],
