@@ -1,6 +1,6 @@
 {
   "name": "local-whisper-stt",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "description": "Offline Speech to Text",
   "main": "app/main.js",
   "author": "ZHANGSHUO22",
@@ -44,7 +44,7 @@
       "gatekeeperAssess": false,
       "identity": null,
 	  "mergeASARs": false,
-	  "x64ArchFiles": "**/bin/ffmpeg"
+	  "x64ArchFiles": "**/bin/*"
     },
     "win": {
       "target": ["nsis", "portable"],
