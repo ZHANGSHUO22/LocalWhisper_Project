@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0a0e1a" />
+  <title>LocalWhisper - Local AI Transcription</title>
+  <meta name="description" content="Your voice stays on your disk. Offline AI-powered transcription." />
+  <!-- Fully offline: zero external resources -->
+
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --primary: hsl(185, 90%, 55%);
+      --neon-purple: hsl(270, 60%, 60%);
+      --deep-space: hsl(225, 35%, 7%);
+      --foreground: hsl(200, 20%, 90%);
+      --muted-fg: hsl(215, 15%, 55%);
+      --muted-bg: hsl(225, 25%, 14%);
+      --glass-bg: hsla(225, 30%, 12%, 0.6);
+      --glass-border: hsla(215, 30%, 22%, 0.5);
+      --border-color: hsl(215, 25%, 18%);
+      --green: hsl(140, 70%, 45%);
+      --font-sans: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --font-mono: Consolas, 'Courier New', monospace;
+    }
+    html, body {
+      width: 100%; min-height: 100vh; overflow-x: hidden;
+      font-family: var(--font-sans);
+      background: var(--deep-space);
+      color: var(--foreground);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ===== KEYFRAMES ===== */
+    @keyframes moveStripes {
+      0%   { background-position: 0 0, 0 0; }
+      100% { background-position: 0 0, 28px 0; }
+    }
+    @keyframes bounceIcon {
+      from { transform: translateY(0); }
+      to   { transform: translateY(-6px); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.6; }
+      50%      { opacity: 1; }
+    }
+    @keyframes scanLine {
+      0%   { transform: translateY(-100%); }
+      100% { transform: translateY(100vh); }
+    }
+    @keyframes glitch1 {
+      0%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+      20%  { clip-path: inset(20% 0 60% 0); transform: translate(-2px, 1px); }
+      40%  { clip-path: inset(40% 0 30% 0); transform: translate(2px, -1px); }
+      60%  { clip-path: inset(60% 0 10% 0); transform: translate(-1px, 2px); }
+      80%  { clip-path: inset(10% 0 80% 0); transform: translate(1px, -2px); }
+    }
+    @keyframes terminalCursor {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0; }
+    }
+
+    /* ===== UTILITIES ===== */
+    .glass-panel {
+      background: var(--glass-bg);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--glass-border);
+    }
+    .glow-cyan {
+      box-shadow: 0 0 15px hsla(185,90%,55%,0.3), 0 0 30px hsla(185,90%,55%,0.1), inset 0 0 15px hsla(185,90%,55%,0.05);
+    }
+    .glow-purple {
+      box-shadow: 0 0 15px hsla(270,60%,60%,0.3), 0 0 30px hsla(270,60%,60%,0.1), inset 0 0 15px hsla(270,60%,60%,0.05);
+    }
+    .text-glow-cyan {
+      text-shadow: 0 0 10px hsla(185,90%,55%,0.6), 0 0 20px hsla(185,90%,55%,0.3), 0 0 40px hsla(185,90%,55%,0.15);
+    }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border-width: 0;
+    }
+
+    /* ===== BACKGROUND LAYERS ===== */
+    .bg-layer { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+    #bg-gradient {
+      background: radial-gradient(ellipse at 50% 0%, hsl(225,35%,12%) 0%, hsl(225,35%,7%) 50%, hsl(230,40%,4%) 100%);
+    }
+    #bg-circuit { opacity: 0.04; width: 100%; height: 100%; }
+    #bg-circuit svg { width: 100%; height: 100%; }
+    #particle-canvas { z-index: 0; }
+    .scan-wrap { position: fixed; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
+    .scan-bar {
+      position: absolute; left: 0; right: 0; height: 1px;
+      background: linear-gradient(to right, transparent, hsla(185,90%,55%,0.15), transparent);
+      animation: scanLine 8s linear infinite;
+    }
+    .center-proc {
+      position: fixed; inset: 0; z-index: 0;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none; opacity: 0.03;
+    }
+
+    /* ===== HEADER ===== */
+    .app-header {
+      position: relative; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 24px 32px;
+    }
+    .title-block { display: flex; flex-direction: column; gap: 4px; }
+    .app-header h1 {
+      font-size: 1.875rem; font-weight: 700; letter-spacing: 0.1em;
+      color: var(--primary);
+    }
+    .subtitle {
+      font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.15em;
+      color: var(--muted-fg); font-style: italic;
+    }
+    .lang-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; border-radius: 9999px;
+      border: 1px solid var(--glass-border);
+      background: hsla(225,30%,12%,0.5);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      cursor: pointer; color: var(--foreground); transition: all 0.3s;
+    }
+    .lang-btn:hover {
+      border-color: hsla(185,90%,55%,0.5);
+      box-shadow: 0 0 15px hsla(185,90%,55%,0.2);
+    }
+    .lang-btn .globe-icon { width: 16px; height: 16px; color: var(--primary); transition: transform 0.3s; }
+    .lang-btn:hover .globe-icon { transform: rotate(45deg); }
+    .lang-btn .lang-active { font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; }
+    .lang-btn .lang-sep, .lang-btn .lang-others { font-family: var(--font-mono); font-size: 10px; color: var(--muted-fg); }
+
+    /* ===== MAIN LAYOUT ===== */
+    .main-container {
+      position: relative; z-index: 10;
+      margin: 0 auto; max-width: 48rem; min-height: 100vh;
+      display: flex; flex-direction: column; gap: 20px;
+      padding: 16px;
+    }
+
+    /* ===== CONTROL CARD ===== */
+    .control-card { position: relative; z-index: 10; border-radius: 12px; padding: 24px; }
+    .corner { position: absolute; width: 24px; height: 24px; pointer-events: none; }
+    .c-tl { top: 0; left: 0; border-left: 2px solid hsla(185,90%,55%,0.6); border-top: 2px solid hsla(185,90%,55%,0.6); border-top-left-radius: 12px; }
+    .c-tr { top: 0; right: 0; border-right: 2px solid hsla(185,90%,55%,0.6); border-top: 2px solid hsla(185,90%,55%,0.6); border-top-right-radius: 12px; }
+    .c-bl { bottom: 0; left: 0; border-left: 2px solid hsla(270,60%,60%,0.4); border-bottom: 2px solid hsla(270,60%,60%,0.4); border-bottom-left-radius: 12px; }
+    .c-br { bottom: 0; right: 0; border-right: 2px solid hsla(270,60%,60%,0.4); border-bottom: 2px solid hsla(270,60%,60%,0.4); border-bottom-right-radius: 12px; }
+    .sec-label {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+    }
+    .sec-label .line-l { flex: 1; height: 1px; background: linear-gradient(to right, hsla(185,90%,55%,0.3), transparent); }
+    .sec-label .line-r { flex: 1; height: 1px; background: linear-gradient(to left, hsla(270,60%,60%,0.3), transparent); }
+    .sec-label span {
+      font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+      letter-spacing: 0.3em; color: var(--muted-fg);
+    }
+
+    /* Upload Zone */
+    .upload-zone {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; padding: 32px; border-radius: 8px;
+      border: 2px dashed hsla(215,30%,22%,0.6);
+      background: hsla(225,30%,12%,0.3);
+      cursor: pointer; transition: all 0.3s;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: hsla(185,90%,55%,0.5);
+      background: hsla(185,90%,55%,0.04);
+    }
+    .upload-zone.drag-over {
+      border-color: var(--primary);
+      background: hsla(185,90%,55%,0.08);
+      box-shadow: 0 0 30px hsla(185,90%,55%,0.15);
+    }
+    .upload-zone .ico { width: 40px; height: 40px; color: var(--muted-fg); transition: all 0.3s; }
+    .upload-zone:hover .ico, .upload-zone.drag-over .ico { color: var(--primary); transform: scale(1.1); }
+    .upload-zone .ico-active { width: 40px; height: 40px; color: var(--primary); }
+    .upload-zone .hint { font-size: 0.875rem; font-weight: 500; color: hsla(200,20%,90%,0.8); }
+    .upload-zone .formats { font-family: var(--font-mono); font-size: 10px; color: var(--muted-fg); }
+    .upload-zone .fname { font-family: var(--font-mono); font-size: 0.875rem; font-weight: 500; color: var(--primary); }
+
+    /* Launch Button */
+    .launch-btn {
+      position: relative; margin-top: 24px; width: 100%;
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      padding: 16px 24px; border-radius: 8px; border: none;
+      font-family: var(--font-sans); font-size: 1rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.15em;
+      cursor: pointer; transition: all 0.3s;
+    }
+    .launch-btn.on {
+      background: linear-gradient(90deg, hsl(185,90%,45%), hsl(200,80%,50%), hsl(230,70%,55%));
+      color: hsl(225,35%,7%);
+      box-shadow: 0 0 25px hsla(185,90%,55%,0.3), 0 4px 15px hsla(225,35%,7%,0.5);
+    }
+    .launch-btn.on:hover {
+      box-shadow: 0 0 40px hsla(185,90%,55%,0.5), 0 4px 20px hsla(225,35%,7%,0.5);
+      filter: brightness(1.1);
+    }
+    .launch-btn.on:active { transform: scale(0.98); }
+    .launch-btn.off { background: var(--muted-bg); color: var(--muted-fg); cursor: not-allowed; }
+    .launch-btn .shine {
+      position: absolute; inset: 0; border-radius: 8px; pointer-events: none;
+      background: linear-gradient(to top, transparent, transparent, rgba(255,255,255,0.1));
+    }
+    .launch-btn .ico-rocket { width: 20px; height: 20px; transition: transform 0.3s; }
+    .launch-btn.on:hover .ico-rocket { transform: translateY(-2px) rotate(-15deg); }
+    .launch-btn.running .ico-rocket { animation: pulseGlow 1s ease-in-out infinite; }
+    .tech-row {
+      margin-top: 12px; display: flex; align-items: center; justify-content: space-between;
+      font-family: var(--font-mono); font-size: 9px; color: hsla(215,15%,55%,0.6);
+    }
+
+    /* ===== PROGRESS ===== */
+    .progress-wrap {
+      position: relative; z-index: 10; border-radius: 12px; padding: 20px;
+      display: none;
+    }
+    .progress-wrap.visible { display: block; }
+    .p-track {
+      position: relative; height: 28px; width: 100%; overflow: hidden;
+      border-radius: 9999px; background: hsla(225,25%,14%,0.5);
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .p-fill {
+      position: relative; height: 100%; border-radius: 9999px;
+      transition: width 0.5s ease-out;
+      background: linear-gradient(90deg, hsl(330,70%,60%), hsl(350,80%,65%), hsl(185,90%,55%), hsl(270,60%,60%));
+      background-size: 100% 100%, 28px 28px;
+      background-image:
+        linear-gradient(90deg, hsl(330,70%,60%), hsl(350,80%,65%), hsl(185,90%,55%), hsl(270,60%,60%)),
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.15) 0px, rgba(255,255,255,0.15) 10px, transparent 10px, transparent 20px);
+      animation: moveStripes 1s linear infinite;
+    }
+    .p-fill.done {
+      background: linear-gradient(90deg, hsl(160,80%,50%), hsl(185,90%,55%), hsl(200,80%,60%));
+      background-image: none; animation: none;
+    }
+    .p-fill .shine-bar {
+      position: absolute; inset: 0; border-radius: 9999px;
+      background: linear-gradient(to bottom, rgba(255,255,255,0.2), transparent, transparent);
+    }
+    .p-fill .run-icon {
+      position: absolute; top: -12px; right: 0; font-size: 1.5rem;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+      animation: bounceIcon 0.6s ease infinite alternate;
+    }
+    .p-fill.done .run-icon { animation: none; }
+    .p-pct {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-mono); font-size: 0.75rem; font-weight: 700;
+      color: var(--foreground); text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    }
+    .p-status {
+      margin-top: 8px; text-align: center;
+      font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted-fg);
+    }
+
+    /* ===== RESULT TERMINAL ===== */
+    .terminal { position: relative; z-index: 10; border-radius: 12px; padding: 20px; }
+    .term-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .term-dots { display: flex; align-items: center; gap: 8px; }
+    .term-dots .d { width: 10px; height: 10px; border-radius: 50%; }
+    .d-r { background: hsl(0,75%,55%); }
+    .d-y { background: hsl(45,90%,55%); }
+    .d-g { background: var(--green); }
+    .term-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.3em; color: var(--muted-fg); }
+    .term-live { display: flex; align-items: center; gap: 4px; }
+    .term-live .ld { width: 4px; height: 4px; border-radius: 50%; background: hsla(185,90%,55%,0.5); animation: pulseGlow 2s ease-in-out infinite; }
+    .term-live span { font-family: var(--font-mono); font-size: 9px; color: hsla(185,90%,55%,0.6); }
+    .term-body {
+      position: relative; min-height: 200px; max-height: 400px; overflow-y: auto;
+      border-radius: 8px; padding: 16px; background: hsla(225,40%,4%,0.8);
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+    }
+    .term-body .inner-glow {
+      position: absolute; inset: 0; border-radius: 8px; pointer-events: none;
+      box-shadow: inset 0 0 30px hsla(270,60%,60%,0.03), inset 0 0 60px hsla(185,90%,55%,0.02);
+    }
+    .term-ph {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 180px; gap: 8px;
+    }
+    .term-ph span { font-family: var(--font-mono); font-size: 0.875rem; color: hsla(215,15%,55%,0.4); }
+    .term-cursor {
+      display: inline-block; width: 8px; height: 16px;
+      background: hsla(185,90%,55%,0.5); animation: terminalCursor 1s step-end infinite;
+    }
+    .tl { display: flex; gap: 12px; font-family: var(--font-mono); font-size: 0.875rem; line-height: 1.6; }
+    .tl + .tl { margin-top: 4px; }
+    .tl .ln { flex-shrink: 0; color: hsla(215,15%,55%,0.3); user-select: none; }
+    .tl .lt { color: hsla(200,20%,90%,0.85); }
+    .term-stat {
+      margin-top: 12px; display: flex; align-items: center; gap: 8px;
+      font-family: var(--font-mono); font-size: 10px; color: var(--muted-fg);
+    }
+    .term-stat .sd { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+    /* ===== BOTTOM READOUT ===== */
+    .bottom-ro {
+      display: flex; align-items: center; justify-content: center; gap: 16px;
+      padding-bottom: 16px;
+      font-family: var(--font-mono); font-size: 9px; color: hsla(215,15%,55%,0.3);
+    }
+    .bottom-ro .sep { width: 4px; height: 4px; border-radius: 50%; }
+    .sep-c { background: hsla(185,90%,55%,0.2); }
+    .sep-p { background: hsla(270,60%,60%,0.2); }
+
+    /* ===== SEAL BUTTON ===== */
+    .seal-btn {
+      position: fixed; bottom: 24px; right: 24px; z-index: 50;
+      width: 56px; height: 56px; border: none; background: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.3s; border-radius: 4px;
+    }
+    .seal-btn:hover { transform: scale(1.1); }
+    .seal-g1 {
+      position: absolute; font-family: serif; font-size: 1.5rem; font-weight: 900;
+      color: var(--green);
+      text-shadow: 0 0 8px hsla(140,70%,45%,0.6), 0 0 16px hsla(140,70%,45%,0.3);
+      animation: glitch1 4s ease-in-out infinite;
+    }
+    .seal-g2 {
+      position: absolute; font-family: serif; font-size: 1.5rem; font-weight: 900;
+      color: hsl(140,80%,55%); opacity: 0.3;
+      animation: glitch1 4s ease-in-out infinite reverse;
+      transform: translate(1px, -1px);
+    }
+
+    /* ===== ABOUT MODAL ===== */
+    .modal-bg {
+      display: none; position: fixed; inset: 0; z-index: 9999;
+      align-items: center; justify-content: center;
+      background: hsla(225,35%,7%,0.85);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    }
+    .modal-bg.open { display: flex; }
+    .modal-box {
+      position: relative; width: 100%; max-width: 32rem; margin: 0 16px;
+      border-radius: 16px; padding: 32px;
+    }
+    .mc-tl { position: absolute; top: 0; left: 0; width: 32px; height: 32px; border-left: 2px solid hsla(185,90%,55%,0.6); border-top: 2px solid hsla(185,90%,55%,0.6); border-top-left-radius: 16px; pointer-events: none; }
+    .mc-tr { position: absolute; top: 0; right: 0; width: 32px; height: 32px; border-right: 2px solid hsla(185,90%,55%,0.6); border-top: 2px solid hsla(185,90%,55%,0.6); border-top-right-radius: 16px; pointer-events: none; }
+    .modal-box h2 { font-size: 1.5rem; font-weight: 700; color: var(--primary); margin-bottom: 24px; }
+    .priv-box {
+      margin-bottom: 24px; border-radius: 8px; padding: 16px;
+      border: 1px solid hsla(140,70%,45%,0.2); background: hsla(140,70%,45%,0.05);
+    }
+    .priv-box h3 { margin-bottom: 12px; font-size: 0.875rem; font-weight: 700; color: var(--green); }
+    .priv-box ul {
+      list-style: none; display: flex; flex-direction: column; gap: 6px;
+      font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.6; color: hsla(200,20%,90%,0.7);
+    }
+    .tech-sec { margin-bottom: 24px; }
+    .tech-sec h3 { margin-bottom: 12px; font-size: 0.875rem; font-weight: 700; color: hsla(200,20%,90%,0.8); }
+    .tech-sec ul {
+      list-style: none; display: flex; flex-direction: column; gap: 4px;
+      font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted-fg);
+    }
+    .modal-ft {
+      margin-bottom: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);
+      text-align: center; font-family: var(--font-mono); font-size: 10px;
+      color: hsla(215,15%,55%,0.5); line-height: 1.8;
+    }
+    .modal-close {
+      width: 100%; padding: 12px; border-radius: 8px; border: none;
+      background: var(--muted-bg); color: var(--foreground);
+      font-family: var(--font-sans); font-size: 0.875rem; font-weight: 700;
+      cursor: pointer; transition: all 0.3s;
+    }
+    .modal-close:hover { background: hsla(225,25%,14%,0.8); box-shadow: 0 0 15px hsla(185,90%,55%,0.1); }
+
+    /* ===== SIDE DECORATIONS ===== */
+    .side-dec {
+      position: fixed; top: 50%; z-index: 10; transform: translateY(-50%);
+      display: none; flex-direction: column; align-items: center; gap: 8px;
+      pointer-events: none;
+    }
+    @media (min-width: 1024px) { .side-dec { display: flex; } }
+    .side-dec.left { left: 16px; }
+    .side-dec.right { right: 16px; }
+    .sb { width: 2px; height: 16px; border-radius: 9999px; }
+    .sb-c { background: hsla(185,90%,55%,0.15); }
+    .sb-p { background: hsla(270,60%,60%,0.15); }
+  </style>
+</head>
+<body>
+
+  <!-- ===== BACKGROUND LAYERS ===== -->
+  <div id="bg-gradient" class="bg-layer" aria-hidden="true"></div>
+
+  <div id="bg-circuit" class="bg-layer" aria-hidden="true">
+    <svg width="100%" height="100%">
+      <defs>
+        <pattern id="cp" x="0" y="0" width="120" height="120" patternUnits="userSpaceOnUse">
+          <path d="M0 60 Q15 45 30 60 Q45 75 60 60 Q75 45 90 60 Q105 75 120 60" fill="none" stroke="hsl(185,90%,55%)" stroke-width="0.5"/>
+          <path d="M60 0 Q45 15 60 30 Q75 45 60 60 Q45 75 60 90 Q75 105 60 120" fill="none" stroke="hsl(270,60%,60%)" stroke-width="0.5"/>
+          <path d="M20 20 Q25 10 35 15 Q40 20 35 28 Q28 32 22 27 Q18 24 20 20" fill="none" stroke="hsl(185,90%,55%)" stroke-width="0.4"/>
+          <path d="M80 80 Q85 70 95 75 Q100 80 95 88 Q88 92 82 87 Q78 84 80 80" fill="none" stroke="hsl(270,60%,60%)" stroke-width="0.4"/>
+          <path d="M10 95 L18 85 L12 85 L20 75" fill="none" stroke="hsl(185,90%,55%)" stroke-width="0.4"/>
+          <path d="M100 25 L108 15 L102 15 L110 5" fill="none" stroke="hsl(270,60%,60%)" stroke-width="0.4"/>
+          <circle cx="30" cy="60" r="1.5" fill="hsl(185,90%,55%)" opacity="0.5"/>
+          <circle cx="90" cy="60" r="1.5" fill="hsl(270,60%,60%)" opacity="0.5"/>
+          <circle cx="60" cy="30" r="1.5" fill="hsl(185,90%,55%)" opacity="0.5"/>
+          <circle cx="60" cy="90" r="1.5" fill="hsl(270,60%,60%)" opacity="0.5"/>
+          <line x1="30" y1="60" x2="60" y2="30" stroke="hsl(185,90%,55%)" stroke-width="0.3" opacity="0.3"/>
+          <line x1="60" y1="30" x2="90" y2="60" stroke="hsl(270,60%,60%)" stroke-width="0.3" opacity="0.3"/>
+          <line x1="90" y1="60" x2="60" y2="90" stroke="hsl(185,90%,55%)" stroke-width="0.3" opacity="0.3"/>
+          <line x1="60" y1="90" x2="30" y2="60" stroke="hsl(270,60%,60%)" stroke-width="0.3" opacity="0.3"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#cp)"/>
+    </svg>
+  </div>
+
+  <div class="center-proc" aria-hidden="true">
+    <svg width="400" height="400" viewBox="0 0 400 400">
+      <text x="200" y="250" text-anchor="middle" font-size="280" font-weight="900"
+        font-family="'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif"
+        fill="none" stroke="hsl(185,90%,55%)" stroke-width="1.5">Z</text>
+      <circle cx="200" cy="200" r="180" fill="none" stroke="hsl(185,90%,55%)" stroke-width="0.5" stroke-dasharray="4 8"/>
+      <circle cx="200" cy="200" r="160" fill="none" stroke="hsl(270,60%,60%)" stroke-width="0.5" stroke-dasharray="6 12"/>
+      <circle cx="200" cy="200" r="140" fill="none" stroke="hsl(185,90%,55%)" stroke-width="0.3" stroke-dasharray="2 6"/>
+    </svg>
+  </div>
+
+  <canvas id="particle-canvas" class="bg-layer" aria-hidden="true"></canvas>
+
+  <div class="scan-wrap" aria-hidden="true"><div class="scan-bar"></div></div>
+
+  <!-- Side decorations -->
+  <div class="side-dec left" aria-hidden="true" id="side-left"></div>
+  <div class="side-dec right" aria-hidden="true" id="side-right"></div>
+
+  <!-- ===== MAIN APP ===== -->
+  <main class="main-container">
+
+    <!-- HEADER -->
+    <header class="app-header">
+      <div class="title-block">
+        <h1 class="text-glow-cyan" id="app-title">LocalWhisper</h1>
+        <p class="subtitle" id="app-subtitle">Your voice stays on your disk</p>
+      </div>
+      <button class="lang-btn" id="lang-btn" aria-label="Change language">
+        <svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>
+        </svg>
+        <span class="lang-active" id="lang-active">EN</span>
+        <span class="lang-sep">/</span>
+        <span class="lang-others">CS / &#x4E2D;&#x6587;</span>
+      </button>
+    </header>
+
+    <!-- CONTROL CARD -->
+    <div class="control-card glass-panel glow-cyan">
+      <div class="corner c-tl"></div>
+      <div class="corner c-tr"></div>
+      <div class="corner c-bl"></div>
+      <div class="corner c-br"></div>
+
+      <div class="sec-label">
+        <div class="line-l"></div><span>audio input</span><div class="line-r"></div>
+      </div>
+
+      <div class="upload-zone" id="upload-zone" role="button" tabindex="0">
+        <input type="file" id="file-input" class="sr-only" accept=".mp4,.mov,.avi,.mkv,.mp3,.wav,.m4a,.flac,.aac,audio/*,video/*" />
+        <div id="upload-empty">
+          <svg class="ico" style="display:block;margin:0 auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p class="hint" id="drop-hint" style="margin-top:12px;text-align:center">Drop your audio / video file here</p>
+          <p class="formats" id="drop-formats" style="text-align:center">Supports MP3, WAV, MP4, MKV, FLAC and more</p>
+        </div>
+        <div id="upload-active" style="display:none;text-align:center">
+          <svg class="ico-active" style="display:block;margin:0 auto;width:40px;height:40px;color:var(--primary)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.5 22h.5a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>
+            <path d="M2 19a2 2 0 1 1 4 0v1a2 2 0 1 1-4 0v-4a6 6 0 0 1 12 0v4a2 2 0 1 1-4 0v-1a2 2 0 1 1 4 0"/>
+          </svg>
+          <p class="fname" id="fname" style="margin-top:12px"></p>
+          <p class="formats" style="margin-top:4px">Click or drop to replace</p>
+        </div>
+      </div>
+
+      <button class="launch-btn off" id="launch-btn" disabled>
+        <div class="shine"></div>
+        <svg class="ico-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/>
+          <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/>
+          <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>
+        </svg>
+        <span id="launch-text">LAUNCH TRANSCRIPTION</span>
+      </button>
+
+      <div class="tech-row">
+        <span>SYS::WHISPER.CPP</span><span>LOCAL_PROCESSING</span><span>v2.1.0</span>
+      </div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div class="progress-wrap glass-panel" id="progress-wrap">
+      <div class="sec-label">
+        <div class="line-r"></div><span>progress</span><div class="line-l"></div>
+      </div>
+      <div class="p-track">
+        <div class="p-fill" id="p-fill" style="width:0%">
+          <div class="shine-bar"></div>
+          <div class="run-icon" id="p-icon">&#x1F3C3;</div>
+        </div>
+        <div class="p-pct" id="p-pct">0%</div>
+      </div>
+      <p class="p-status" id="p-status">Standing by... 0%</p>
+    </div>
+
+    <!-- RESULT TERMINAL -->
+    <div class="terminal glass-panel glow-purple">
+      <div class="term-hdr">
+        <div class="term-dots"><span class="d d-r"></span><span class="d d-y"></span><span class="d d-g"></span></div>
+        <span class="term-title">output::terminal</span>
+        <div class="term-live"><span class="ld"></span><span>LIVE</span></div>
+      </div>
+      <div class="term-body" id="term-body">
+        <div class="inner-glow"></div>
+        <div class="term-ph" id="term-ph">
+          <span id="term-ph-text">Transcription output will materialize here...</span>
+          <span class="term-cursor"></span>
+        </div>
+        <div id="term-lines" style="display:none"></div>
+      </div>
+      <div class="term-stat">
+        <span class="sd"></span>
+        <span id="term-stat-text">Systems online. Awaiting audio input...</span>
+      </div>
+    </div>
+
+    <!-- BOTTOM -->
+    <div class="bottom-ro">
+      <span>NODE::LOCAL</span><span class="sep sep-c"></span>
+      <span>CIPHER::AES-256</span><span class="sep sep-p"></span>
+      <span>LINK::OFFLINE</span>
+    </div>
+
+  </main>
+
+  <!-- SEAL BUTTON -->
+  <button class="seal-btn" id="seal-btn" aria-label="About LocalWhisper" title="About &amp; Privacy">
+    <span class="seal-g1">&#x6714;</span>
+    <span class="seal-g2">&#x6714;</span>
+  </button>
+
+  <!-- ABOUT MODAL -->
+  <div class="modal-bg" id="modal" role="dialog" aria-modal="true">
+    <div class="modal-box glass-panel glow-cyan" id="modal-box">
+      <div class="mc-tl"></div><div class="mc-tr"></div>
+      <h2 class="text-glow-cyan" id="m-title">About &amp; Credits</h2>
+      <div class="priv-box">
+        <h3 id="m-priv-title">Privacy Commitment</h3>
+        <ul>
+          <li id="m-p1">100% Local: No internet connection required.</li>
+          <li id="m-p2">Zero Leakage: Audio/Text stay on your device forever.</li>
+          <li id="m-p3">Transparent: No tracking, no analytics, no telemetry.</li>
+        </ul>
+      </div>
+      <div class="tech-sec">
+        <h3 id="m-tech-title">Core Technology</h3>
+        <ul>
+          <li id="m-t1">ASR Engine: whisper.cpp (MIT)</li>
+          <li id="m-t2">AI Model: OpenAI Whisper (MIT)</li>
+          <li id="m-t3">Processing: FFmpeg (LGPL)</li>
+        </ul>
+      </div>
+      <p class="modal-ft">Licensed under MIT. Powered by the Open Source Community.<br/>Copyright &#169; 2026 Shuo</p>
+      <button class="modal-close" id="m-close">Close</button>
+    </div>
+  </div>
+
+  <!-- ===== JAVASCRIPT ===== -->
+  <script>
+    /* ===== I18N ===== */
+    var T = {
+      en: {
+        title: "LocalWhisper",
+        subtitle: "Your voice stays on your disk",
+        btnStart: "LAUNCH TRANSCRIPTION",
+        btnRunning: "PROCESSING...",
+        statusReady: "Systems online. Awaiting audio input...",
+        statusDone: "Mission Complete",
+        resultPlaceholder: "Transcription output will materialize here...",
+        alertNoFile: "Please select an audio or video file first!",
+        progressReady: "Standing by... 0%",
+        progressRunning: "Processing... ",
+        progressDone: "Transcription Complete!",
+        langBtnText: "EN",
+        dropHint: "Drop your audio / video file here",
+        dropFormats: "Supports MP3, WAV, MP4, MKV, FLAC and more",
+        aboutTitle: "About & Credits",
+        privacyTitle: "Privacy Commitment",
+        privacy1: "100% Local: No internet connection required.",
+        privacy2: "Zero Leakage: Audio/Text stay on your device forever.",
+        privacy3: "Transparent: No tracking, no analytics, no telemetry.",
+        techTitle: "Core Technology",
+        tech1: "ASR Engine: whisper.cpp (MIT)",
+        tech2: "AI Model: OpenAI Whisper (MIT)",
+        tech3: "Processing: FFmpeg (LGPL)",
+        close: "Close"
+      },
+      cs: {
+        title: "LocalWhisper",
+        subtitle: "V\u00e1\u0161 hlas z\u016fst\u00e1v\u00e1 na va\u0161em disku",
+        btnStart: "SPUSTIT P\u0158EPIS",
+        btnRunning: "ZPRACOV\u00c1V\u00c1M...",
+        statusReady: "Syst\u00e9my online. \u010cek\u00e1m na audio vstup...",
+        statusDone: "Mise dokon\u010dena",
+        resultPlaceholder: "Zde se zobraz\u00ed v\u00fdsledky p\u0159episu...",
+        alertNoFile: "Nejd\u0159\u00edve vyberte audio nebo video soubor!",
+        progressReady: "P\u0159ipraveno... 0%",
+        progressRunning: "Zpracov\u00e1v\u00e1m... ",
+        progressDone: "P\u0159epis dokon\u010den!",
+        langBtnText: "CS",
+        dropHint: "P\u0159et\u00e1hn\u011bte sem sv\u016fj audio / video soubor",
+        dropFormats: "Podporuje MP3, WAV, MP4, MKV, FLAC a dal\u0161\u00ed",
+        aboutTitle: "O aplikaci",
+        privacyTitle: "Z\u00e1vazek k soukrom\u00ed",
+        privacy1: "100% lok\u00e1ln\u00ed: Nen\u00ed pot\u0159eba internet.",
+        privacy2: "\u017d\u00e1dn\u00fd \u00fanik: Audio/Text z\u016fst\u00e1vaj\u00ed na va\u0161em za\u0159\u00edzen\u00ed.",
+        privacy3: "Transparentn\u00ed: \u017d\u00e1dn\u00e9 sledov\u00e1n\u00ed, anal\u00fdzy ani telemetrie.",
+        techTitle: "Z\u00e1kladn\u00ed technologie",
+        tech1: "ASR Engine: whisper.cpp (MIT)",
+        tech2: "AI Model: OpenAI Whisper (MIT)",
+        tech3: "Zpracov\u00e1n\u00ed: FFmpeg (LGPL)",
+        close: "Zav\u0159\u00edt"
+      },
+      cn: {
+        title: "LocalWhisper",
+        subtitle: "\u4F60\u7684\u58F0\u97F3\uFF0C\u59CB\u7EC8\u7559\u5728\u4F60\u7684\u78C1\u76D8\u4E0A",
+        btnStart: "\u542F\u52A8\u8F6C\u5F55",
+        btnRunning: "\u6B63\u5728\u8FD0\u884C...",
+        statusReady: "\u7CFB\u7EDF\u5C31\u7EEA\uFF0C\u7B49\u5F85\u97F3\u9891\u8F93\u5165...",
+        statusDone: "\u4EFB\u52A1\u5B8C\u6210",
+        resultPlaceholder: "\u8F6C\u5F55\u7ED3\u679C\u5C06\u663E\u793A\u5728\u6B64\u5904...",
+        alertNoFile: "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u97F3\u9891\u6216\u89C6\u9891\u6587\u4EF6\uFF01",
+        progressReady: "\u51C6\u5907\u5C31\u7EEA... 0%",
+        progressRunning: "\u6B63\u5728\u8BC6\u522B\u4E2D... ",
+        progressDone: "\u8F6C\u5F55\u5B8C\u6210\uFF01",
+        langBtnText: "\u4E2D\u6587",
+        dropHint: "\u62D6\u653E\u97F3\u9891/\u89C6\u9891\u6587\u4EF6\u5230\u6B64\u5904",
+        dropFormats: "\u652F\u6301 MP3, WAV, MP4, MKV, FLAC \u7B49\u683C\u5F0F",
+        aboutTitle: "\u5173\u4E8E\u4E0E\u81F4\u8C22",
+        privacyTitle: "\u9690\u79C1\u627F\u8BFA",
+        privacy1: "100% \u672C\u5730\uFF1A\u65E0\u9700\u4E92\u8054\u7F51\u8FDE\u63A5\u3002",
+        privacy2: "\u96F6\u6CC4\u6F0F\uFF1A\u97F3\u9891/\u6587\u672C\u59CB\u7EC8\u7559\u5728\u60A8\u7684\u8BBE\u5907\u4E0A\u3002",
+        privacy3: "\u900F\u660E\uFF1A\u65E0\u8DDF\u8E2A\u3001\u65E0\u5206\u6790\u3001\u65E0\u9065\u6D4B\u3002",
+        techTitle: "\u6838\u5FC3\u6280\u672F",
+        tech1: "ASR \u5F15\u64CE: whisper.cpp (MIT)",
+        tech2: "AI \u6A21\u578B: OpenAI Whisper (MIT)",
+        tech3: "\u5904\u7406: FFmpeg (LGPL)",
+        close: "\u5173\u95ED"
+      }
+    };
+
+    var langs = ["en","cs","cn"], lang = "en", selFile = null, running = false, progIv = null;
+
+    var DEMO = [
+      "[00:00:00 --> 00:00:03] Welcome to the LocalWhisper transcription system.",
+      "[00:00:03 --> 00:00:07] This demonstration shows real-time audio processing.",
+      "[00:00:07 --> 00:00:12] All data remains strictly on your local machine.",
+      "[00:00:12 --> 00:00:16] No network requests are made during transcription.",
+      "[00:00:16 --> 00:00:21] The whisper.cpp engine processes audio locally.",
+      "[00:00:21 --> 00:00:25] Supporting multiple languages and dialects.",
+      "[00:00:25 --> 00:00:30] Privacy is our core design principle.",
+      "[00:00:30 --> 00:00:34] Your voice stays on your disk. Always."
+    ];
+
+    function t(k) { return T[lang][k]; }
+
+    function applyLang() {
+      document.getElementById("app-title").textContent = t("title");
+      document.getElementById("app-subtitle").textContent = t("subtitle");
+      document.getElementById("lang-active").textContent = t("langBtnText");
+      document.getElementById("drop-hint").textContent = t("dropHint");
+      document.getElementById("drop-formats").textContent = t("dropFormats");
+      document.getElementById("term-ph-text").textContent = t("resultPlaceholder");
+      document.getElementById("term-stat-text").textContent = t("statusReady");
+      document.getElementById("m-title").textContent = t("aboutTitle");
+      document.getElementById("m-priv-title").textContent = t("privacyTitle");
+      document.getElementById("m-p1").textContent = t("privacy1");
+      document.getElementById("m-p2").textContent = t("privacy2");
+      document.getElementById("m-p3").textContent = t("privacy3");
+      document.getElementById("m-tech-title").textContent = t("techTitle");
+      document.getElementById("m-t1").textContent = t("tech1");
+      document.getElementById("m-t2").textContent = t("tech2");
+      document.getElementById("m-t3").textContent = t("tech3");
+      document.getElementById("m-close").textContent = t("close");
+      document.getElementById("p-status").textContent = t("progressReady");
+      document.getElementById("launch-text").textContent = running ? t("btnRunning") : t("btnStart");
+    }
+
+    /* ===== LANGUAGE TOGGLE ===== */
+    document.getElementById("lang-btn").addEventListener("click", function() {
+      lang = langs[(langs.indexOf(lang) + 1) % langs.length];
+      applyLang();
+    });
+
+    /* ===== FILE HANDLING ===== */
+    var zone = document.getElementById("upload-zone");
+    var fi = document.getElementById("file-input");
+
+    zone.addEventListener("click", function() { fi.click(); });
+    zone.addEventListener("keydown", function(e) { if (e.key === "Enter" || e.key === " ") fi.click(); });
+    zone.addEventListener("dragover", function(e) { e.preventDefault(); zone.classList.add("drag-over"); });
+    zone.addEventListener("dragleave", function() { zone.classList.remove("drag-over"); });
+    zone.addEventListener("drop", function(e) {
+      e.preventDefault(); zone.classList.remove("drag-over");
+      if (e.dataTransfer.files[0]) pickFile(e.dataTransfer.files[0]);
+    });
+    fi.addEventListener("change", function() { if (fi.files[0]) pickFile(fi.files[0]); });
+
+    function pickFile(f) {
+      selFile = f;
+      document.getElementById("upload-empty").style.display = "none";
+      document.getElementById("upload-active").style.display = "block";
+      document.getElementById("fname").textContent = f.name;
+      var b = document.getElementById("launch-btn");
+      b.disabled = false; b.classList.remove("off"); b.classList.add("on");
+    }
+
+    /* ===== PROGRESS ICON ===== */
+    function pIcon(p) {
+      if (p >= 100) return "\uD83C\uDFC1";
+      if (p >= 90) return "\uD83D\uDE80";
+      if (p >= 60) return "\uD83D\uDE97";
+      if (p >= 30) return "\uD83D\uDEB4";
+      return "\uD83C\uDFC3";
+    }
+
+    /* ===== LAUNCH ===== */
+    document.getElementById("launch-btn").addEventListener("click", function() {
+      if (!selFile || running) return;
+      running = true;
+
+      var btn = document.getElementById("launch-btn");
+      btn.disabled = true; btn.classList.remove("on"); btn.classList.add("off","running");
+      document.getElementById("launch-text").textContent = t("btnRunning");
+
+      var pw = document.getElementById("progress-wrap");
+      pw.classList.add("visible");
+
+      document.getElementById("term-ph").style.display = "none";
+      var tl = document.getElementById("term-lines");
+      tl.style.display = "block"; tl.innerHTML = "";
+      document.getElementById("term-stat-text").textContent = "Processing audio stream...";
+
+      var cur = 0, li = 0;
+      var fill = document.getElementById("p-fill");
+      var pct = document.getElementById("p-pct");
+      var ico = document.getElementById("p-icon");
+      var stat = document.getElementById("p-status");
+
+      fill.classList.remove("done");
+
+      progIv = setInterval(function() {
+        cur += Math.random() * 4 + 1;
+        if (cur > 100) cur = 100;
+        fill.style.width = Math.min(cur,100) + "%";
+        pct.textContent = Math.round(cur) + "%";
+        ico.textContent = pIcon(cur);
+
+        var th = (li + 1) * (100 / DEMO.length);
+        if (cur >= th && li < DEMO.length) {
+          var d = document.createElement("div"); d.className = "tl";
+          d.innerHTML = '<span class="ln">' + String(li+1).padStart(3,"0") + '</span><span class="lt">' + DEMO[li] + '</span>';
+          tl.appendChild(d); li++;
+        }
+
+        if (cur < 100) { stat.textContent = t("progressRunning") + Math.round(cur) + "%"; }
+
+        if (cur >= 100) {
+          clearInterval(progIv);
+          fill.classList.add("done");
+          stat.textContent = t("progressDone");
+          document.getElementById("term-stat-text").textContent = t("statusDone");
+          running = false;
+          btn.classList.remove("running");
+          btn.disabled = false; btn.classList.remove("off"); btn.classList.add("on");
+          document.getElementById("launch-text").textContent = t("btnStart");
+        }
+      }, 300);
+    });
+
+    /* ===== SEAL & MODAL ===== */
+    document.getElementById("seal-btn").addEventListener("click", function() {
+      document.getElementById("modal").classList.add("open");
+    });
+    document.getElementById("modal").addEventListener("click", function(e) {
+      if (e.target === this) this.classList.remove("open");
+    });
+    document.getElementById("m-close").addEventListener("click", function() {
+      document.getElementById("modal").classList.remove("open");
+    });
+
+    /* ===== PARTICLES ===== */
+    (function() {
+      var c = document.getElementById("particle-canvas"), x = c.getContext("2d"), ps = [];
+      var cols = ["hsl(185,90%,55%)","hsl(270,60%,60%)","hsl(200,20%,70%)"];
+      function sz() { c.width = window.innerWidth; c.height = window.innerHeight; }
+      sz(); window.addEventListener("resize", sz);
+      for (var i = 0; i < 60; i++) {
+        ps.push({
+          x: Math.random()*c.width, y: Math.random()*c.height,
+          vx: (Math.random()-0.5)*0.3, vy: -Math.random()*0.4-0.1,
+          s: Math.random()*2+0.5, o: Math.random()*0.5+0.1,
+          cl: cols[Math.floor(Math.random()*cols.length)]
+        });
+      }
+      (function draw() {
+        x.clearRect(0,0,c.width,c.height);
+        for (var i=0;i<ps.length;i++) {
+          var p=ps[i];
+          x.globalAlpha=p.o; x.fillStyle=p.cl;
+          x.beginPath(); x.arc(p.x,p.y,p.s,0,Math.PI*2); x.fill();
+          x.globalAlpha=p.o*0.3;
+          x.beginPath(); x.arc(p.x,p.y,p.s*3,0,Math.PI*2); x.fill();
+          p.x+=p.vx; p.y+=p.vy;
+          if(p.y<-10){p.y=c.height+10;p.x=Math.random()*c.width;}
+          if(p.x<-10)p.x=c.width+10;
+          if(p.x>c.width+10)p.x=-10;
+        }
+        x.globalAlpha=1;
+        requestAnimationFrame(draw);
+      })();
+    })();
+
+    /* ===== SIDE DECORATIONS ===== */
+    (function() {
+      var l=document.getElementById("side-left"), r=document.getElementById("side-right");
+      for(var i=0;i<8;i++){
+        var a=document.createElement("div"); a.className="sb sb-c";
+        a.style.opacity=(0.2+(i/8)*0.5); a.style.animation="pulseGlow "+(2+i*0.3)+"s ease-in-out infinite";
+        l.appendChild(a);
+        var b=document.createElement("div"); b.className="sb sb-p";
+        b.style.opacity=(0.2+((7-i)/8)*0.5); b.style.animation="pulseGlow "+(2+(7-i)*0.3)+"s ease-in-out infinite";
+        r.appendChild(b);
+      }
+    })();
+
+    applyLang();
+  </script>
+</body>
+</html>

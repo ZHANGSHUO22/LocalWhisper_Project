@@ -1,0 +1,68 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # 只要你推送到 GitHub 的标签是以 v 开头的（如 v1.0.0），就会触发打包
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest] # 同时在 Windows 和 Mac 云服务器上跑
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # 确保拉取 whisper.cpp 源码
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      # ✨ 核心魔法：在云端为不同架构编译引擎
+      - name: Compile for macOS (Universal)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd whisper.cpp
+          # 编译 Intel 版
+          WHISPER_METAL=1 make -j
+          mkdir -p ../bin
+          mv main ../bin/whisper-mac-x64
+          make clean
+          # 编译 M 芯片原生版 (ARM64)
+          WHISPER_METAL=1 CFLAGS="-target arm64-apple-macos11" CXXFLAGS="-target arm64-apple-macos11" LDFLAGS="-target arm64-apple-macos11" make -j
+          mv main ../bin/whisper-mac-arm64
+
+      - name: Compile for Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd whisper.cpp
+          cmake -B build -DWHISPER_SDL2=OFF
+          cmake --build build --config Release
+          mkdir -p ../bin
+          copy build\bin\Release\main.exe ..\bin\whisper-win-x64.exe
+
+      # 执行 Electron 打包
+      - name: Build Electron App
+        run: npm run build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 自动发布的权限
+
+      # 上传安装包到 GitHub Releases
+      - name: Upload Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
