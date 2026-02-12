@@ -38,51 +38,55 @@ jobs:
           # 使用 curl 从 HuggingFace 下载官方模型 (约140MB)
           curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin -o models/ggml-base.bin
 
-# ==========================================
-      # 🍎 macOS 编译 (重点修复部分)
+      # ==========================================
+      # 🍎 macOS 编译 (静态编译 + 兼容性修复)
       # ==========================================
       - name: Compile for macOS
         if: matrix.os == 'macos-latest'
         run: |
           cd whisper.cpp
 
-          echo "🛠️ 开始构建 macOS Intel (x86_64) 版本..."
+          # --- 1. 编译 Intel 版 (静态 + 禁用 AVX 防止老电脑崩溃) ---
+          echo "🛠️ 构建 macOS Intel (x86_64)..."
           cmake -B build-x86 \
             -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DBUILD_SHARED_LIBS=OFF \
             -DGGML_NATIVE=OFF \
+            -DWHISPER_NO_AVX=ON \
+            -DWHISPER_NO_AVX2=ON \
+            -DWHISPER_NO_FMA=ON \
+            -DWHISPER_NO_F16C=ON \
             -DWHISPER_BUILD_TESTS=OFF \
             -DWHISPER_BUILD_EXAMPLES=ON
           cmake --build build-x86 --config Release -j 4
 
-          echo "🛠️ 开始构建 macOS Apple Silicon (arm64) 版本..."
+          # --- 2. 编译 M1/M2 版 (静态) ---
+          echo "🛠️ 构建 macOS Apple Silicon (arm64)..."
           cmake -B build-arm \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DBUILD_SHARED_LIBS=OFF \
             -DGGML_NATIVE=OFF \
             -DWHISPER_BUILD_TESTS=OFF \
             -DWHISPER_BUILD_EXAMPLES=ON
           cmake --build build-arm --config Release -j 4
 
-          echo "📦 移动并重命名文件..."
+          # --- 3. 移动文件 ---
+          echo "📦 移动文件..."
           mkdir -p ../bin
 
-          # 处理 Intel 版
           if [ -f "build-x86/bin/whisper-cli" ]; then
             cp build-x86/bin/whisper-cli ../bin/whisper-mac-x64
           else
             cp build-x86/bin/main ../bin/whisper-mac-x64
           fi
 
-          # 处理 M1/M2 版
           if [ -f "build-arm/bin/whisper-cli" ]; then
             cp build-arm/bin/whisper-cli ../bin/whisper-mac-arm64
           else
             cp build-arm/bin/main ../bin/whisper-mac-arm64
           fi
 
-          # ============================================
-          # 🔥 新增修改 1：确保 FFmpeg 存在
-          # ============================================
-          # 如果仓库里没上传 ffmpeg，云端是空的，这里自动补救下载一个
+          # --- 4. 补全 FFmpeg ---
           if [ ! -f "../bin/ffmpeg" ]; then
              echo "⚠️ 未检测到 FFmpeg，正在下载..."
              curl -L https://evermeet.cx/ffmpeg/ffmpeg-6.1.zip -o ffmpeg.zip
@@ -91,46 +95,83 @@ jobs:
              rm ffmpeg.zip
           fi
 
-          # ============================================
-          # 🔥 新增修改 2：给所有文件签名 (Ad-hoc Signing)
-          # 这一步是为了解决朋友电脑上弹出的“恶意软件”警告
-          # ============================================
-          echo "🔏 正在给二进制文件进行本地签名..."
-          # 1. 进入 bin 目录
+          # --- 5. 自动签名 ---
+          echo "🔏 签名中..."
           cd ../bin
-
-          # 2. 赋予所有文件可执行权限
           chmod +x *
-
-          # 3. 移除所有文件的隔离标签 (如果有的话)
           xattr -cr *
-
-          # 4. ⭐ 核心：给所有文件签名！
-          # "*" 代表目录下的所有文件。不管以后你加了什么新工具，这里都会自动签名，绝不报错。
           codesign --force --deep -s - *
-
-          echo "✅ 所有二进制文件签名完成！"
+          echo "✅ 完成！"
 
       # ==========================================
-      # 🪟 Windows 编译
+      # 🪟 Windows 编译 (静态编译 + 自动下载 ffmpeg + 兼容老电脑)
       # ==========================================
       - name: Compile for Windows
         if: matrix.os == 'windows-latest'
         run: |
           cd whisper.cpp
-          # 同样禁止 Native 探测，保证兼容性
-          cmake -B build -DGGML_NATIVE=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
-          cmake --build build --config Release
-          New-Item -ItemType Directory -Force -Path ..\bin
 
-          # 兼容 Windows 的文件名查找
+          echo "🛠️ 开始构建 Windows 版本..."
+
+          # 1. CMake 配置：
+          # -DBUILD_SHARED_LIBS=OFF : 静态编译，防止缺少 DLL
+          # -DWHISPER_NO_AVX=ON     : 禁用 AVX，防止老 CPU 闪退
+          cmake -B build -A x64 \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DGGML_NATIVE=OFF \
+            -DWHISPER_NO_AVX=ON \
+            -DWHISPER_NO_AVX2=ON \
+            -DWHISPER_NO_FMA=ON \
+            -DWHISPER_NO_F16C=ON \
+            -DWHISPER_BUILD_TESTS=OFF \
+            -DWHISPER_BUILD_EXAMPLES=ON
+
+          cmake --build build --config Release -j 4
+
+          echo "📦 移动引擎文件..."
+          # 创建 bin 目录，如果不存在的话
+          if (-not (Test-Path "../bin")) { New-Item -ItemType Directory -Force -Path "../bin" }
+
+          # 寻找并移动 whisper 引擎 (兼容新旧版文件名)
           if (Test-Path "build/bin/Release/whisper-cli.exe") {
-            copy build/bin/Release/whisper-cli.exe ..\bin\whisper-win-x64.exe
+            Copy-Item "build/bin/Release/whisper-cli.exe" -Destination "../bin/whisper-win-x64.exe" -Force
           } elseif (Test-Path "build/bin/Release/main.exe") {
-            copy build/bin/Release/main.exe ..\bin\whisper-win-x64.exe
+            Copy-Item "build/bin/Release/main.exe" -Destination "../bin/whisper-win-x64.exe" -Force
           } else {
-             echo "Error: Cannot find compiled exe!"
+             echo "❌ Error: Cannot find compiled exe!"
              exit 1
+          }
+
+          # ============================================
+          # 🔥 关键修复：自动下载 ffmpeg.exe
+          # ============================================
+          if (-not (Test-Path "../bin/ffmpeg.exe")) {
+             echo "⚠️ 未检测到 FFmpeg，正在从 gyan.dev 下载..."
+
+             # 1. 下载 ffmpeg 压缩包
+             $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+             $output = "ffmpeg.zip"
+             Invoke-WebRequest -Uri $url -OutFile $output
+
+             # 2. 解压
+             echo "正在解压..."
+             Expand-Archive -Path $output -DestinationPath temp_ffmpeg -Force
+
+             # 3. 提取 ffmpeg.exe (它通常在解压后的 bin 子文件夹里)
+             # 我们递归寻找 ffmpeg.exe 并移动它到项目的 bin 目录
+             $ffmpegPath = Get-ChildItem -Path temp_ffmpeg -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+
+             if ($ffmpegPath) {
+                 Move-Item -Path $ffmpegPath.FullName -Destination "../bin/ffmpeg.exe" -Force
+                 echo "✅ ffmpeg.exe 已就位！"
+             } else {
+                 echo "❌ 下载失败，未找到 ffmpeg.exe"
+                 exit 1
+             }
+
+             # 4. 清理临时文件
+             Remove-Item -Path temp_ffmpeg -Recurse -Force
+             Remove-Item -Path $output -Force
           }
 
       - name: Build Electron App
