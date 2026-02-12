@@ -30,6 +30,15 @@ jobs:
         run: npm install
 
       # ==========================================
+      # 因为不能上传 >100MB 文件，所以必须现场下载
+      # ==========================================
+      - name: Download Whisper Model
+        run: |
+          mkdir -p models
+          # 使用 curl 从 HuggingFace 下载官方模型 (约140MB)
+          curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin -o models/ggml-base.bin
+
+      # ==========================================
       # 🍎 macOS 编译 (重点修复部分)
       # ==========================================
       - name: Compile for macOS
@@ -93,7 +102,7 @@ jobs:
           }
 
       - name: Build Electron App
-        run: npm run build
+        run: npm run build -- --publish never
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
