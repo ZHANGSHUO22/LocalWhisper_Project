@@ -3,11 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0a0e1a" />
   <title>LocalWhisper - Local AI Transcription</title>
-  <meta name="description" content="Your voice stays on your disk. Offline AI-powered transcription." />
-  <!-- Fully offline: zero external resources -->
-
   <style>
     /* ===== RESET & BASE ===== */
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -393,7 +389,6 @@
 </head>
 <body>
 
-  <!-- ===== BACKGROUND LAYERS ===== -->
   <div id="bg-gradient" class="bg-layer" aria-hidden="true"></div>
 
   <div id="bg-circuit" class="bg-layer" aria-hidden="true">
@@ -435,14 +430,11 @@
 
   <div class="scan-wrap" aria-hidden="true"><div class="scan-bar"></div></div>
 
-  <!-- Side decorations -->
   <div class="side-dec left" aria-hidden="true" id="side-left"></div>
   <div class="side-dec right" aria-hidden="true" id="side-right"></div>
 
-  <!-- ===== MAIN APP ===== -->
   <main class="main-container">
 
-    <!-- HEADER -->
     <header class="app-header">
       <div class="title-block">
         <h1 class="text-glow-cyan" id="app-title">LocalWhisper</h1>
@@ -458,7 +450,6 @@
       </button>
     </header>
 
-    <!-- CONTROL CARD -->
     <div class="control-card glass-panel glow-cyan">
       <div class="corner c-tl"></div>
       <div class="corner c-tr"></div>
@@ -503,7 +494,6 @@
       </div>
     </div>
 
-    <!-- PROGRESS -->
     <div class="progress-wrap glass-panel" id="progress-wrap">
       <div class="sec-label">
         <div class="line-r"></div><span>progress</span><div class="line-l"></div>
@@ -518,7 +508,6 @@
       <p class="p-status" id="p-status">Standing by... 0%</p>
     </div>
 
-    <!-- RESULT TERMINAL -->
     <div class="terminal glass-panel glow-purple">
       <div class="term-hdr">
         <div class="term-dots"><span class="d d-r"></span><span class="d d-y"></span><span class="d d-g"></span></div>
@@ -539,7 +528,6 @@
       </div>
     </div>
 
-    <!-- BOTTOM -->
     <div class="bottom-ro">
       <span>NODE::LOCAL</span><span class="sep sep-c"></span>
       <span>CIPHER::AES-256</span><span class="sep sep-p"></span>
@@ -548,13 +536,11 @@
 
   </main>
 
-  <!-- SEAL BUTTON -->
   <button class="seal-btn" id="seal-btn" aria-label="About LocalWhisper" title="About &amp; Privacy">
     <span class="seal-g1">&#x6714;</span>
     <span class="seal-g2">&#x6714;</span>
   </button>
 
-  <!-- ABOUT MODAL -->
   <div class="modal-bg" id="modal" role="dialog" aria-modal="true">
     <div class="modal-box glass-panel glow-cyan" id="modal-box">
       <div class="mc-tl"></div><div class="mc-tr"></div>
@@ -580,8 +566,10 @@
     </div>
   </div>
 
-  <!-- ===== JAVASCRIPT ===== -->
   <script>
+    /* 🔥 引入 Electron (关键！) */
+    const { ipcRenderer, webUtils } = require('electron');
+
     /* ===== I18N ===== */
     var T = {
       en: {
@@ -664,18 +652,9 @@
       }
     };
 
-    var langs = ["en","cs","cn"], lang = "en", selFile = null, running = false, progIv = null;
+    var langs = ["en","cs","cn"], lang = "en", selFile = null, running = false;
 
-    var DEMO = [
-      "[00:00:00 --> 00:00:03] Welcome to the LocalWhisper transcription system.",
-      "[00:00:03 --> 00:00:07] This demonstration shows real-time audio processing.",
-      "[00:00:07 --> 00:00:12] All data remains strictly on your local machine.",
-      "[00:00:12 --> 00:00:16] No network requests are made during transcription.",
-      "[00:00:16 --> 00:00:21] The whisper.cpp engine processes audio locally.",
-      "[00:00:21 --> 00:00:25] Supporting multiple languages and dialects.",
-      "[00:00:25 --> 00:00:30] Privacy is our core design principle.",
-      "[00:00:30 --> 00:00:34] Your voice stays on your disk. Always."
-    ];
+    // 🔥 删除了那个 DEMO 假数据数组！
 
     function t(k) { return T[lang][k]; }
 
@@ -722,7 +701,7 @@
     fi.addEventListener("change", function() { if (fi.files[0]) pickFile(fi.files[0]); });
 
     function pickFile(f) {
-      selFile = f;
+      selFile = f; // ⚠️ 注意：在 Electron 里，f.path 是真实路径
       document.getElementById("upload-empty").style.display = "none";
       document.getElementById("upload-active").style.display = "block";
       document.getElementById("fname").textContent = f.name;
@@ -739,58 +718,84 @@
       return "\uD83C\uDFC3";
     }
 
-    /* ===== LAUNCH ===== */
+    /* ===== 🚀 LAUNCH (真实逻辑) ===== */
     document.getElementById("launch-btn").addEventListener("click", function() {
       if (!selFile || running) return;
       running = true;
 
+      // 1. UI 变身
       var btn = document.getElementById("launch-btn");
       btn.disabled = true; btn.classList.remove("on"); btn.classList.add("off","running");
       document.getElementById("launch-text").textContent = t("btnRunning");
 
       var pw = document.getElementById("progress-wrap");
       pw.classList.add("visible");
-
       document.getElementById("term-ph").style.display = "none";
+
+      // 清空上次的结果
       var tl = document.getElementById("term-lines");
       tl.style.display = "block"; tl.innerHTML = "";
-      document.getElementById("term-stat-text").textContent = "Processing audio stream...";
+      document.getElementById("term-stat-text").textContent = "Initializing...";
 
-      var cur = 0, li = 0;
+      // 重置进度条
       var fill = document.getElementById("p-fill");
-      var pct = document.getElementById("p-pct");
-      var ico = document.getElementById("p-icon");
-      var stat = document.getElementById("p-status");
-
       fill.classList.remove("done");
+      fill.style.width = "0%";
+      document.getElementById("p-pct").textContent = "0%";
+      document.getElementById("p-status").textContent = t("progressReady");
 
-      progIv = setInterval(function() {
-        cur += Math.random() * 4 + 1;
-        if (cur > 100) cur = 100;
-        fill.style.width = Math.min(cur,100) + "%";
-        pct.textContent = Math.round(cur) + "%";
-        ico.textContent = pIcon(cur);
+      // 2. 🔥 发送命令给 main.js
+      // selFile.path 是 Electron 特有的属性，包含完整绝对路径
+      const filePath = webUtils.getPathForFile(selFile);
+      ipcRenderer.send('start-transcription', filePath, lang);
+    });
 
-        var th = (li + 1) * (100 / DEMO.length);
-        if (cur >= th && li < DEMO.length) {
-          var d = document.createElement("div"); d.className = "tl";
-          d.innerHTML = '<span class="ln">' + String(li+1).padStart(3,"0") + '</span><span class="lt">' + DEMO[li] + '</span>';
-          tl.appendChild(d); li++;
-        }
+    /* ===== 🎧 监听后台消息 ===== */
 
-        if (cur < 100) { stat.textContent = t("progressRunning") + Math.round(cur) + "%"; }
+    // 1. 接收日志文本
+    ipcRenderer.on('transcription-data', (event, text) => {
+        const tl = document.getElementById("term-lines");
 
-        if (cur >= 100) {
-          clearInterval(progIv);
-          fill.classList.add("done");
-          stat.textContent = t("progressDone");
-          document.getElementById("term-stat-text").textContent = t("statusDone");
-          running = false;
-          btn.classList.remove("running");
-          btn.disabled = false; btn.classList.remove("off"); btn.classList.add("on");
-          document.getElementById("launch-text").textContent = t("btnStart");
-        }
-      }, 300);
+        // 简单处理文本，支持换行
+        const lines = text.split('\n');
+        lines.forEach(line => {
+            if(!line.trim()) return;
+            const d = document.createElement("div");
+            d.className = "tl";
+            // 保持原本的黑色终端风格
+            d.innerHTML = `<span class="lt">${line}</span>`;
+            tl.appendChild(d);
+        });
+
+        // 自动滚动到底部
+        const tb = document.getElementById("term-body");
+        tb.scrollTop = tb.scrollHeight;
+    });
+
+    // 2. 接收进度条
+    ipcRenderer.on('transcription-progress', (event, percentage) => {
+        const pct = parseInt(percentage);
+        const fill = document.getElementById("p-fill");
+
+        fill.style.width = pct + "%";
+        document.getElementById("p-pct").textContent = pct + "%";
+        document.getElementById("p-icon").textContent = pIcon(pct);
+        document.getElementById("p-status").textContent = t("progressRunning") + pct + "%";
+    });
+
+    // 3. 任务结束
+    ipcRenderer.on('transcription-finished', () => {
+        running = false;
+        const btn = document.getElementById("launch-btn");
+        const fill = document.getElementById("p-fill");
+
+        fill.classList.add("done");
+        document.getElementById("p-status").textContent = t("progressDone");
+        document.getElementById("term-stat-text").textContent = t("statusDone");
+
+        btn.classList.remove("running");
+        btn.disabled = false; btn.classList.remove("off"); btn.classList.add("on");
+        document.getElementById("launch-text").textContent = t("btnStart");
     });
 
     /* ===== SEAL & MODAL ===== */

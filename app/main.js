@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell} = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -32,16 +32,25 @@ function getWhisperPath() {
 
 // --- 2. 拼接具体文件的路径 ---
 const ffmpegPath = path.join(baseResourcePath, 'bin', 'ffmpeg');
-const whisperPath = path.join(baseResourcePath, 'bin', 'whisper-mac-x64');
+
+// 🔥 核心修改：不要写死 'whisper-mac-x64'，而是调用函数动态获取！
+const whisperPath = getWhisperPath();
+
 const modelPath = path.join(baseResourcePath, 'models', 'ggml-base.bin');
 
 // 🛡️【权限修复】: 确保文件有执行权限 (解决 macOS EACCES 报错)
 if (process.platform === 'darwin') {
   try {
-    // 🔥 也要记得给新的 arm64 文件赋予权限（即便它还没生成，写在这里防患未然）
+    // 定义两个具体的路径，不管当前用哪个，把两个都赋权，以防万一
+    const x64Path = path.join(baseResourcePath, 'bin', 'whisper-mac-x64');
     const arm64Path = path.join(baseResourcePath, 'bin', 'whisper-mac-arm64');
-    [ffmpegPath, whisperPath, arm64Path].forEach(p => {
-        if (fs.existsSync(p)) fs.chmodSync(p, 0o755);
+
+    // 遍历这三个文件，只要存在的，统统给 755 权限
+    [ffmpegPath, x64Path, arm64Path].forEach(p => {
+        if (fs.existsSync(p)) {
+            fs.chmodSync(p, 0o755); // 0o755 代表 rwxr-xr-x (拥有者可执行)
+            console.log(`✅ 权限修复成功: ${path.basename(p)}`);
+        }
     });
   } catch (err) {
     console.error('⚠️ 赋予权限失败:', err.message);
@@ -66,7 +75,15 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+    createWindow();
+// 🔥 修改点 3: macOS 专属逻辑 - 点击图标重新打开窗口
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+            createWindow();
+        }
+    });
+});
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
@@ -74,7 +91,11 @@ app.on('window-all-closed', () => {
 
 // 🔥 核心修改：接收前端传来的 lang 参数 (默认 'cn')
 ipcMain.on('start-transcription', async (event, filePath, lang = 'cn') => {
-
+    if (!filePath) {
+        console.error("❌ 错误：接收到的 filePath 为空！");
+        event.reply('transcription-data', "❌ 错误：无法获取文件路径，请重试。\n");
+        return; // 直接结束，不再往下跑，防止报错崩溃
+    }
     // --- 🌐 后台多语言字典 ---
     const i18nLog = {
         cn: {
@@ -103,12 +124,12 @@ ipcMain.on('start-transcription', async (event, filePath, lang = 'cn') => {
 
     // 获取当前语言包
     const t = i18nLog[lang] || i18nLog.cn;
-
     const timestamp = Date.now();
     const tempWavPath = path.join(os.tmpdir(), `temp_${timestamp}.wav`);
 
     // 1. 获取系统下载文件夹路径
     const downloadsPath = app.getPath('downloads');
+	const fileName = path.basename(filePath, path.extname(filePath)); // 原文件名
     // 2. 将结果文件前缀设为下载文件夹
     const outputPrefix = path.join(downloadsPath, `trans_result_${timestamp}`);
 
@@ -206,8 +227,25 @@ ipcMain.on('start-transcription', async (event, filePath, lang = 'cn') => {
 
         whisper.on('close', (code) => {
             if (code === 0) {
-                event.reply('transcription-data', `\n${t.done}\n${t.result_label}${outputPrefix}.txt\n`);
-                event.reply('transcription-finished');
+                // 🔥 修改点 4: 读取生成的文件内容，并自动打开文件夹
+                const resultTxtPath = outputPrefix + '.txt';
+                let finalContent = "";
+
+                try {
+                    if (fs.existsSync(resultTxtPath)) {
+                        // 1. 读取内容发给前端显示
+                        finalContent = fs.readFileSync(resultTxtPath, 'utf-8');
+                        // 2. 告诉前端：这是最终结果，请替换掉之前的日志
+                        event.reply('transcription-data', `\n✅ --------------------\n${finalContent}\n--------------------\n`);
+
+                        // 3. 弹窗打开文件夹，选中该文件
+                        shell.showItemInFolder(resultTxtPath);
+                        event.reply('transcription-data', `${t.done}\n${t.result_label}${resultTxtPath}\n`);
+                    }
+                } catch (e) {
+                    console.error("读取结果失败", e);
+                }
+				event.reply('transcription-finished');
             } else {
                 event.reply('transcription-data', `\n${t.error_label}${code})\n`);
             }

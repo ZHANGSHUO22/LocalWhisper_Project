@@ -1,6 +1,6 @@
 {
   "name": "local-whisper-stt",
-  "version": "1.1.9",
+  "version": "1.2.0",
   "description": "Offline Speech to Text",
   "main": "app/main.js",
   "author": "ZHANGSHUO22",
