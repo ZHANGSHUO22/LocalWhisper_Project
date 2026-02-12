@@ -3,7 +3,7 @@ SOFTWARE LICENSE AND THIRD-PARTY NOTICES
 ================================================================
 
 PROJECT: Local Whisper STT (离线语音转文字工具)
-COPYRIGHT: Copyright (c) 2024 Your Name (或者你的领英 ID)
+COPYRIGHT: Copyright (c) 202COPYRIGHT: Copyright (c) 2026 Shuo Zhang (www.linkedin.com/in/shuo-zhang-295888237)
 LICENSE: MIT License
 
 ----------------------------------------------------------------
