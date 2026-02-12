@@ -103,8 +103,8 @@ jobs:
           codesign --force --deep -s - *
           echo "✅ 完成！"
 
-      # ==========================================
-      # 🪟 Windows 编译 (静态编译 + 自动下载 ffmpeg + 兼容老电脑)
+# ==========================================
+      # 🪟 Windows 编译 (修复语法错误版)
       # ==========================================
       - name: Compile for Windows
         if: matrix.os == 'windows-latest'
@@ -113,18 +113,8 @@ jobs:
 
           echo "🛠️ 开始构建 Windows 版本..."
 
-          # 1. CMake 配置：
-          # -DBUILD_SHARED_LIBS=OFF : 静态编译，防止缺少 DLL
-          # -DWHISPER_NO_AVX=ON     : 禁用 AVX，防止老 CPU 闪退
-          cmake -B build -A x64 \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DGGML_NATIVE=OFF \
-            -DWHISPER_NO_AVX=ON \
-            -DWHISPER_NO_AVX2=ON \
-            -DWHISPER_NO_FMA=ON \
-            -DWHISPER_NO_F16C=ON \
-            -DWHISPER_BUILD_TESTS=OFF \
-            -DWHISPER_BUILD_EXAMPLES=ON
+          # 🔥 核心修复：所有参数写在同一行，不要换行！
+          cmake -B build -A x64 -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DWHISPER_NO_AVX=ON -DWHISPER_NO_AVX2=ON -DWHISPER_NO_FMA=ON -DWHISPER_NO_F16C=ON -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
 
           cmake --build build --config Release -j 4
 
