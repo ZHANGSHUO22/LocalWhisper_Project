@@ -60,12 +60,11 @@ Download the latest version for your OS from the [Releases](https://github.com/Z
 
 ---
 
-## 👨‍💻 About Developer (Hiring)
+## 💻 About Developer (Looking for Work)
 
-I am **Shuo Zhang**, a developer passionate about building privacy-focused AI tools and solving low-level engineering challenges.
+I am **Shuo Zhang**, I am currently exploring new opportunities in Actuarial Science, Risk Analytics, and other quant roles in Prague (or remote).
 
-**I am currently looking for new opportunities!**
-If you are looking for a developer who can bridge the gap between high-level UI (Electron/Node.js) and low-level performance (C++/Compilation), let's connect!
+If your team is looking for a Quant with a developer’s mindset—someone who can bridge the gap between Mathematical Rigor and High-Performance Software Engineering—let’s chat! 🚀
 
 * **LinkedIn**: [Shuo Zhang](https://www.linkedin.com/in/shuo-zhang-295888237)
 * **Project Site**: [LocalWhisper Landing Page](https://github.com/ZHANGSHUO22/LocalWhisper_Project)
