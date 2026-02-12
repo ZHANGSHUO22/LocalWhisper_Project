@@ -3,13 +3,13 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # 只要你推送到 GitHub 的标签是以 v 开头的（如 v1.0.0），就会触发打包
+      - 'v*'
 
 jobs:
   release:
     strategy:
       matrix:
-        os: [windows-latest, macos-latest] # 同时在 Windows 和 Mac 云服务器上跑
+        os: [windows-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          submodules: recursive # 确保拉取 whisper.cpp 源码
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -28,40 +28,74 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      # ✨ 核心魔法：在云端为不同架构编译引擎
-
+      # ==========================================
+      # 🍎 macOS 编译 (重点修复部分)
+      # ==========================================
       - name: Compile for macOS
         if: matrix.os == 'macos-latest'
         run: |
           cd whisper.cpp
-          # 1. 编译 Intel 版 (x86_64) - 移除 march=native 避免冲突
-          cmake -B build-x86 -DGGML_METAL=ON -DCMAKE_OSX_ARCHITECTURES=x86_64 -DGGML_CPU_ALL_VARIANTS=OFF
-          cmake --build build-x86 --config Release
 
-          # 2. 编译 M 芯片原生版 (arm64)
-          cmake -B build-arm -DGGML_METAL=ON -DCMAKE_OSX_ARCHITECTURES=arm64 -DGGML_CPU_ALL_VARIANTS=OFF
-          cmake --build build-arm --config Release
+          echo "🛠️ 开始构建 macOS Intel (x86_64) 版本..."
+          # DGGML_NATIVE=OFF 禁止自动探测 CPU，防止 apple-m3 报错
+          cmake -B build-x86 \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DGGML_NATIVE=OFF \
+            -DWHISPER_BUILD_TESTS=OFF \
+            -DWHISPER_BUILD_EXAMPLES=ON
+          cmake --build build-x86 --config Release -j 4
 
+          echo "🛠️ 开始构建 macOS Apple Silicon (arm64) 版本..."
+          cmake -B build-arm \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DGGML_NATIVE=OFF \
+            -DWHISPER_BUILD_TESTS=OFF \
+            -DWHISPER_BUILD_EXAMPLES=ON
+          cmake --build build-arm --config Release -j 4
+
+          echo "📦 移动并重命名文件..."
           mkdir -p ../bin
-          cp build-x86/bin/whisper-cli ../bin/whisper-mac-x64
-          cp build-arm/bin/whisper-cli ../bin/whisper-mac-arm64
 
+          # 自动寻找文件名：新版叫 whisper-cli，旧版叫 main，找到哪个用哪个
+          if [ -f "build-x86/bin/whisper-cli" ]; then
+            cp build-x86/bin/whisper-cli ../bin/whisper-mac-x64
+          else
+            cp build-x86/bin/main ../bin/whisper-mac-x64
+          fi
+
+          if [ -f "build-arm/bin/whisper-cli" ]; then
+            cp build-arm/bin/whisper-cli ../bin/whisper-mac-arm64
+          else
+            cp build-arm/bin/main ../bin/whisper-mac-arm64
+          fi
+
+      # ==========================================
+      # 🪟 Windows 编译
+      # ==========================================
       - name: Compile for Windows
         if: matrix.os == 'windows-latest'
         run: |
           cd whisper.cpp
-          cmake -B build -DWHISPER_SDL2=OFF
+          # 同样禁止 Native 探测，保证兼容性
+          cmake -B build -DGGML_NATIVE=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
           cmake --build build --config Release
           mkdir -p ../bin
-          copy build\bin\Release\whisper-cli.exe ..\bin\whisper-win-x64.exe
 
-      # 执行 Electron 打包
+          # 兼容 Windows 的文件名查找
+          if (Test-Path "build/bin/Release/whisper-cli.exe") {
+            copy build/bin/Release/whisper-cli.exe ..\bin\whisper-win-x64.exe
+          } elseif (Test-Path "build/bin/Release/main.exe") {
+            copy build/bin/Release/main.exe ..\bin\whisper-win-x64.exe
+          } else {
+             echo "Error: Cannot find compiled exe!"
+             exit 1
+          }
+
       - name: Build Electron App
         run: npm run build
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 自动发布的权限
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 上传安装包到 GitHub Releases
       - name: Upload Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
