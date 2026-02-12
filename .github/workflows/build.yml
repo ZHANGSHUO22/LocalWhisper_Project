@@ -38,7 +38,7 @@ jobs:
           # 使用 curl 从 HuggingFace 下载官方模型 (约140MB)
           curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin -o models/ggml-base.bin
 
-      # ==========================================
+# ==========================================
       # 🍎 macOS 编译 (重点修复部分)
       # ==========================================
       - name: Compile for macOS
@@ -47,7 +47,6 @@ jobs:
           cd whisper.cpp
 
           echo "🛠️ 开始构建 macOS Intel (x86_64) 版本..."
-          # DGGML_NATIVE=OFF 禁止自动探测 CPU，防止 apple-m3 报错
           cmake -B build-x86 \
             -DCMAKE_OSX_ARCHITECTURES=x86_64 \
             -DGGML_NATIVE=OFF \
@@ -66,18 +65,51 @@ jobs:
           echo "📦 移动并重命名文件..."
           mkdir -p ../bin
 
-          # 自动寻找文件名：新版叫 whisper-cli，旧版叫 main，找到哪个用哪个
+          # 处理 Intel 版
           if [ -f "build-x86/bin/whisper-cli" ]; then
             cp build-x86/bin/whisper-cli ../bin/whisper-mac-x64
           else
             cp build-x86/bin/main ../bin/whisper-mac-x64
           fi
 
+          # 处理 M1/M2 版
           if [ -f "build-arm/bin/whisper-cli" ]; then
             cp build-arm/bin/whisper-cli ../bin/whisper-mac-arm64
           else
             cp build-arm/bin/main ../bin/whisper-mac-arm64
           fi
+
+          # ============================================
+          # 🔥 新增修改 1：确保 FFmpeg 存在
+          # ============================================
+          # 如果仓库里没上传 ffmpeg，云端是空的，这里自动补救下载一个
+          if [ ! -f "../bin/ffmpeg" ]; then
+             echo "⚠️ 未检测到 FFmpeg，正在下载..."
+             curl -L https://evermeet.cx/ffmpeg/ffmpeg-6.1.zip -o ffmpeg.zip
+             unzip -o ffmpeg.zip
+             mv ffmpeg ../bin/ffmpeg
+             rm ffmpeg.zip
+          fi
+
+          # ============================================
+          # 🔥 新增修改 2：给所有文件签名 (Ad-hoc Signing)
+          # 这一步是为了解决朋友电脑上弹出的“恶意软件”警告
+          # ============================================
+          echo "🔏 正在给二进制文件进行本地签名..."
+          # 1. 进入 bin 目录
+          cd ../bin
+
+          # 2. 赋予所有文件可执行权限
+          chmod +x *
+
+          # 3. 移除所有文件的隔离标签 (如果有的话)
+          xattr -cr *
+
+          # 4. ⭐ 核心：给所有文件签名！
+          # "*" 代表目录下的所有文件。不管以后你加了什么新工具，这里都会自动签名，绝不报错。
+          codesign --force --deep -s - *
+
+          echo "✅ 所有二进制文件签名完成！"
 
       # ==========================================
       # 🪟 Windows 编译
