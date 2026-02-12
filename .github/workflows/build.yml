@@ -30,18 +30,20 @@ jobs:
 
       # ✨ 核心魔法：在云端为不同架构编译引擎
 
-      - name: Compile for macOS (Universal)
+      - name: Compile for macOS
         if: matrix.os == 'macos-latest'
         run: |
           cd whisper.cpp
-          # 1. 编译 Intel 版 (x86_64)
-          cmake -B build-x86 -DWHISPER_METAL=ON -DCMAKE_OSX_ARCHITECTURES=x86_64
+          # 1. 编译 Intel 版 (x86_64) - 移除 march=native 避免冲突
+          cmake -B build-x86 -DGGML_METAL=ON -DCMAKE_OSX_ARCHITECTURES=x86_64 -DGGML_CPU_ALL_VARIANTS=OFF
           cmake --build build-x86 --config Release
+
+          # 2. 编译 M 芯片原生版 (arm64)
+          cmake -B build-arm -DGGML_METAL=ON -DCMAKE_OSX_ARCHITECTURES=arm64 -DGGML_CPU_ALL_VARIANTS=OFF
+          cmake --build build-arm --config Release
+
           mkdir -p ../bin
           cp build-x86/bin/whisper-cli ../bin/whisper-mac-x64
-
-          cmake -B build-arm -DWHISPER_METAL=ON -DCMAKE_OSX_ARCHITECTURES=arm64
-          cmake --build build-arm --config Release
           cp build-arm/bin/whisper-cli ../bin/whisper-mac-arm64
 
       - name: Compile for Windows
