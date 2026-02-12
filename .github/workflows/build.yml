@@ -29,18 +29,20 @@ jobs:
         run: npm install
 
       # ✨ 核心魔法：在云端为不同架构编译引擎
+
       - name: Compile for macOS (Universal)
         if: matrix.os == 'macos-latest'
         run: |
           cd whisper.cpp
-          # 编译 Intel 版
-          WHISPER_METAL=1 make -j
+          # 1. 编译 Intel 版 (x86_64)
+          cmake -B build-x86 -DWHISPER_METAL=ON -DCMAKE_OSX_ARCHITECTURES=x86_64
+          cmake --build build-x86 --config Release
           mkdir -p ../bin
-          mv main ../bin/whisper-mac-x64
-          make clean
-          # 编译 M 芯片原生版 (ARM64)
-          WHISPER_METAL=1 CFLAGS="-target arm64-apple-macos11" CXXFLAGS="-target arm64-apple-macos11" LDFLAGS="-target arm64-apple-macos11" make -j
-          mv main ../bin/whisper-mac-arm64
+          cp build-x86/bin/whisper-cli ../bin/whisper-mac-x64
+
+          cmake -B build-arm -DWHISPER_METAL=ON -DCMAKE_OSX_ARCHITECTURES=arm64
+          cmake --build build-arm --config Release
+          cp build-arm/bin/whisper-cli ../bin/whisper-mac-arm64
 
       - name: Compile for Windows
         if: matrix.os == 'windows-latest'
@@ -49,7 +51,7 @@ jobs:
           cmake -B build -DWHISPER_SDL2=OFF
           cmake --build build --config Release
           mkdir -p ../bin
-          copy build\bin\Release\main.exe ..\bin\whisper-win-x64.exe
+          copy build\bin\Release\whisper-cli.exe ..\bin\whisper-win-x64.exe
 
       # 执行 Electron 打包
       - name: Build Electron App
