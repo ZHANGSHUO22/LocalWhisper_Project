@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LocalWhisper | Privacy-First AI Pipeline</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;500;700&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --neon-blue: #00f2ff;
+            --neon-purple: #bc13fe;
+            --dark-bg: #050505;
+        }
+        body {
+            background-color: var(--dark-bg);
+            color: #e0e0e0;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+        .fira { font-family: 'Fira Code', monospace; }
+
+        /* 霓虹背景效果 */
+        .bg-glow {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at 50% 50%, #1a1a2e 0%, #050505 100%);
+            z-index: -1;
+        }
+        .neon-grid {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: linear-gradient(rgba(0, 242, 255, 0.05) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(0, 242, 255, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: -1;
+            transform: perspective(500px) rotateX(60deg);
+            transform-origin: center top;
+            animation: grid-move 20s linear infinite;
+        }
+        @keyframes grid-move { from { background-position: 0 0; } to { background-position: 0 100%; } }
+
+        /* 玻璃拟态卡片 */
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+        }
+
+        .neon-btn {
+            position: relative;
+            transition: all 0.3s;
+            border: 1px solid var(--neon-blue);
+        }
+        .neon-btn:hover {
+            box-shadow: 0 0 20px var(--neon-blue);
+            background: var(--neon-blue);
+            color: black;
+        }
+
+        .gradient-text {
+            background: linear-gradient(to right, var(--neon-blue), var(--neon-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* 打印机动画 */
+        .typewriter {
+            overflow: hidden;
+            border-right: .15em solid var(--neon-blue);
+            white-space: nowrap;
+            margin: 0 auto;
+            animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite;
+        }
+        @keyframes typing { from { width: 0 } to { width: 100% } }
+        @keyframes blink-caret { from, to { border-color: transparent } 50% { border-color: var(--neon-blue); } }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div class="bg-glow"></div>
+    <div class="neon-grid"></div>
+
+    <main class="container mx-auto px-6 py-20 relative">
+        <section class="text-center mb-32">
+            <div class="inline-block px-4 py-1 border border-cyan-500 rounded-full text-xs font-bold text-cyan-400 mb-6 fira tracking-widest uppercase animate-pulse">
+                &gt; Security Protocol: Active
+            </div>
+            <h1 class="text-6xl md:text-8xl font-black mb-6 tracking-tighter">
+                LOCAL<span class="gradient-text">WHISPER</span>
+            </h1>
+            <p class="text-xl md:text-2xl text-gray-400 max-w-2xl mx-auto fira mb-10">
+                100% Offline Speech-to-Text Pipeline. <br>
+                <span class="text-cyan-500">Secure. High-Performance. On-Device.</span>
+            </p>
+
+            <div class="flex flex-col md:flex-row justify-center gap-6 mt-12">
+                <a href="https://github.com/ZHANGSHUO22/LocalWhisper_Project/releases/download/v1.3.0/LocalWhisper-1.3.0-universal.dmg"
+                   class="neon-btn px-8 py-4 rounded-lg font-bold flex items-center justify-center gap-2">
+                    <span>🍎 DOWNLOAD FOR MACOS</span>
+                </a>
+                <a href="https://github.com/ZHANGSHUO22/LocalWhisper_Project/releases/download/v1.3.0/LocalWhisper-Windows-1.3.0.exe"
+                   class="neon-btn px-8 py-4 rounded-lg font-bold flex items-center justify-center gap-2 border-purple-500 text-purple-400 hover:bg-purple-500 hover:text-white hover:shadow-purple-500/50">
+                    <span>🪟 DOWNLOAD FOR WINDOWS</span>
+                </a>
+            </div>
+        </section>
+
+        <section class="grid md:grid-cols-3 gap-8 mb-32">
+            <div class="glass p-8 rounded-2xl">
+                <h3 class="text-cyan-400 font-bold mb-4 fira text-lg">// Hardware-Aware</h3>
+                <p class="text-gray-400">Optimized for Apple Silicon & Intel legacy hardware. Dynamic instruction set management (AVX/ARM64).</p>
+            </div>
+            <div class="glass p-8 rounded-2xl">
+                <h3 class="text-cyan-400 font-bold mb-4 fira text-lg">// Static Build</h3>
+                <p class="text-gray-400">Production-grade portability. No runtime dependencies, no missing DLLs. Just pure C++ performance.</p>
+            </div>
+            <div class="glass p-8 rounded-2xl border-purple-900/50">
+                <h3 class="text-purple-400 font-bold mb-4 fira text-lg">// Privacy Default</h3>
+                <p class="text-gray-400">Designed for Finance and Actuarial professionals. Your confidential data never leaves the device.</p>
+            </div>
+        </section>
+
+        <section class="max-w-4xl mx-auto mb-32">
+            <div class="glass p-10 rounded-3xl border-l-4 border-l-cyan-500">
+                <h2 class="text-3xl font-bold mb-8 flex items-center gap-4">
+                    <span class="text-cyan-500">_</span> Developer Intelligence
+                </h2>
+                <div class="space-y-6 text-gray-300 leading-relaxed">
+                    <p>
+                        As a <span class="font-bold text-white">Matfyz (Charles University)</span> graduate with a background in <span class="text-cyan-400">Financial Mathematics</span>,
+                        I bridge the gap between Mathematical Rigor and High-Performance Work Flow Pipelines.
+                    </p>
+                    <p>
+                        LocalWhisper was born from a critical gap in highly regulated sectors like Actuarial Science:
+                        the need for AI utility without data leakage risks.
+                    </p>
+                    <div class="bg-black/40 p-6 rounded-xl fira text-sm border border-white/5">
+                        <p class="text-cyan-500 mb-2 font-bold">Interested in higher accuracy / custom models?</p>
+                        <p class="text-gray-400">If your team requires enterprise-grade models or specialized fine-tuning for technical domains, let's discuss custom solutions.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="hiring" class="max-w-4xl mx-auto text-center py-20 bg-gradient-to-b from-transparent via-cyan-900/10 to-transparent rounded-full">
+            <h2 class="text-4xl font-black mb-8">LOOKING FOR <span class="text-cyan-500 underline decoration-wavy">NEW OPPORTUNITIES</span></h2>
+            <p class="text-gray-400 mb-10 text-lg">Actuarial/Risk Analytics | Quantitative Roles <br> <span class="fira text-cyan-600 uppercase tracking-widest text-sm">Location: Prague / Remote</span></p>
+
+            <div class="flex flex-wrap justify-center gap-4">
+                <a href="https://www.linkedin.com/in/shuo-zhang-295888237" target="_blank" class="bg-cyan-600 hover:bg-cyan-500 text-black px-10 py-4 rounded-full font-black text-lg transition-transform hover:scale-105">
+                    HIRE ME ON LINKEDIN
+                </a>
+                <a href="https://github.com/ZHANGSHUO22/LocalWhisper_Project" target="_blank" class="glass px-10 py-4 rounded-full font-bold hover:bg-white/10 transition-colors">
+                    EXPLORE GITHUB
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="text-center py-10 text-gray-600 fira text-xs border-t border-white/5">
+        &copy; 2026 Shuo Zhang // Matfyz Alumni // Built with ❤️ & AI
+    </footer>
+
+</body>
+</html>
